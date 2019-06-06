@@ -1,0 +1,60 @@
+*** Create a SAS data set from a single SAS trasport file;
+*** The SAS transport file(s) must be downloaded from the MEPS web site and 
+    then unzipped before running this program;
+LIBNAME sasdata '/folders/myfolders/sasuser.v94';
+FILENAME in1 '/folders/myfolders/MIS445/h188a.ssp';
+proc xcopy in = in1 out = sasdata IMPORT;
+RUN;
+TITLE1 'AHRQ MEPS DATA 2016';
+TITLE2 "Narcotic analgesics or Narcotic analgesic combos, 2016";
+
+PROC FORMAT;
+  VALUE GTZERO
+     0         = '0'
+     0 <- HIGH = '>0'
+     ;
+RUN;
+/*1) IDENTIFY Narcotic analgesics or Narcotic analgesic USING THERAPEUTIC CLASSIFICATION (TC) CODES*/
+DATA DRUG;
+  SET sasdata.H188A;
+  IF TC1S1_1 IN (60, 191) ; /*definition of Narcotic analgesics or Narcotic analgesic*/
+RUN;
+
+TITLE3 "A SAMPLE DUMP FOR PMED RECORDS WITH Narcotic analgesics or Narcotic analgesic combos";
+PROC PRINT DATA=DRUG (OBS=50);
+VAR RXRECIDX LINKIDX TC1S1_1 RXXP16X RXSF16X;
+ BY DUPERSID;
+RUN;
+/*2) SUM DATA TO PERSON-LEVEL*/
+PROC SUMMARY DATA=DRUG NWAY;
+  CLASS DUPERSID;
+  VAR RXXP16X RXSF16X;
+  OUTPUT OUT=PERDRUG (DROP=_TYPE_) sum=TOT OOP;
+RUN;
+TITLE3 "A SAMPLE DUMP FOR PERSON-LEVEL EXPENDITURES FOR Narcotic analgesics or Narcotic analgesic combos";
+PROC PRINT DATA=PERDRUG (OBS=50);
+RUN;
+DATA PERDRUG2;
+ SET PERDRUG;
+     RENAME _FREQ_ = N_PHRCHASE ;
+     THIRD_PAYER   = TOT - OOP;
+RUN;
+ods noproctitle;
+ods graphics / imagemap=on;
+
+proc means data=SASUSER.H188A chartype mean std min max n vardef=df;
+	var RXXP16X;
+	class RXDRGNAM;
+RUN;
+/* Test for normality */
+proc univariate data=SASUSER.H188A normal mu0=0;
+	ods select TestsForNormality;
+	class RXDRGNAM;
+	var RXXP16X;
+RUN;
+
+/* t test */
+proc ttest data=SASUSER.H188A sides=2 h0=0 plots(showh0);
+	class RXDRGNAM;
+	var RXXP16X;
+RUN;
